@@ -10,10 +10,7 @@ class ChessBenchUrls:
     """GCS bucket URLs for ChessBench state-value data."""
 
     # Google Cloud Storage base URL for the dataset.
-    base: str = (
-        "https://storage.googleapis.com/"
-        "searchless_chess/data"
-    )
+    base: str = "https://storage.googleapis.com/searchless_chess/data"
 
     @property
     def train(self) -> str:
@@ -55,8 +52,10 @@ class BagFormat:
 
     # Bytes per index entry (each entry is an int64 offset).
     index_entry_bytes: int = 8
+
     # Bytes for the win-probability value (float64).
     win_prob_bytes: int = 8
+
     # Minimum valid .bag file size (needs trailing offset).
     min_file_bytes: int = 8
 
@@ -71,9 +70,24 @@ class DownloadConfig:
     progress_interval: int = 500_000
 
 
+@dataclass(frozen=True)
+class LoaderConfig:
+    """PyTorch DataLoader settings."""
+
+    # Training batch size.
+    batch_size: int = 256
+
+    # Number of parallel data-loading workers.
+    num_workers: int = 4
+
+    # Pin memory for faster GPU transfers.
+    pin_memory: bool = True
+
+
 # Module-level singletons.
 CHESSBENCH_URLS = ChessBenchUrls()
 SPLIT_CFG = SplitConfig()
 SAMPLING = SamplingDefaults()
 BAG_FMT = BagFormat()
 DOWNLOAD_CFG = DownloadConfig()
+LOADER_CFG = LoaderConfig()
