@@ -4,7 +4,8 @@ img/*
 data/raw/
 data/processed/
 data/splits
-
+artifacts/
+.vscode/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -207,6 +208,8 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+
 
 # Marimo
 marimo/_static/
