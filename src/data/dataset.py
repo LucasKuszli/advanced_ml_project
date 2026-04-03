@@ -35,18 +35,21 @@ class ChessDataset(Dataset):
             Function mapping a FEN string to a tensor.
             If ``None``, raw FEN strings are returned
             instead.
+        split_dir (Path | None): Directory containing the
+            split CSVs.  Defaults to ``SPLIT_DIR``.
     """
 
     def __init__(
         self,
         split: str,
         encoder: Callable[[str], torch.Tensor] | None = None,
+        split_dir: Path | None = None,
     ) -> None:
-        path = SPLIT_DIR / f"{split}.csv"
+        root = split_dir if split_dir is not None else SPLIT_DIR
+        path = root / f"{split}.csv"
         if not path.exists():
             raise FileNotFoundError(
-                f"Split CSV not found: {path}. "
-                f"Run `python -m src.data.loader` first."
+                f"Split CSV not found: {path}. Run `python -m src.data.loader` first."
             )
 
         self._fens: list[str] = []
@@ -66,11 +69,13 @@ class ChessDataset(Dataset):
         return len(self._fens)
 
     def __getitem__(
-        self, idx: int,
+        self,
+        idx: int,
     ) -> tuple[torch.Tensor | str, torch.Tensor]:
         fen = self._fens[idx]
         label = torch.tensor(
-            self._labels[idx], dtype=torch.float32,
+            self._labels[idx],
+            dtype=torch.float32,
         )
         if self._encoder is not None:
             return self._encoder(fen), label
@@ -83,6 +88,7 @@ def build_loader(
     batch_size: int = LOADER_CFG.batch_size,
     num_workers: int = LOADER_CFG.num_workers,
     pin_memory: bool = LOADER_CFG.pin_memory,
+    split_dir: Path | None = None,
 ) -> DataLoader:
     """Build a DataLoader for the given split.
 
@@ -94,11 +100,17 @@ def build_loader(
         batch_size (int): Batch size, (default=256).
         num_workers (int): Loader workers, (default=4).
         pin_memory (bool): Pin host memory, (default=True).
+        split_dir (Path | None): Custom split directory,
+            (default=None → ``SPLIT_DIR``).
 
     Returns:
         DataLoader.
     """
-    dataset = ChessDataset(split, encoder=encoder)
+    dataset = ChessDataset(
+        split,
+        encoder=encoder,
+        split_dir=split_dir,
+    )
     shuffle = split == "train"
     return DataLoader(
         dataset,
@@ -134,7 +146,9 @@ if __name__ == "__main__":
     print(f"  win_prob: {label.item():.4f}")
 
     loader = build_loader(
-        args.split, batch_size=8, num_workers=0,
+        args.split,
+        batch_size=8,
+        num_workers=0,
     )
     batch_fens, batch_labels = next(iter(loader))
     print(f"\nBatch (size={len(batch_labels)}):")
