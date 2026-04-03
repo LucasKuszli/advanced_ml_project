@@ -22,20 +22,41 @@ The full ChessBench release also includes action-value data
 
 ## Usage
 
-Download the training `.bag` file (~36 GB), sample 10M positions,
-and split into train/val/test CSVs (80/10/10):
+Download both train (~36 GB) and test (~5 MB) `.bag` files, then
+sample and write train/val/test CSVs:
 
 ```bash
 uv run python -m src.data.loader
 ```
 
-Use `--num-samples` for a smaller subset or `--skip-download` to
-reuse an already-downloaded `.bag` file:
+Skip the download step to reuse already-downloaded `.bag` files:
 
 ```bash
-uv run python -m src.data.loader --num-samples 1000000
-uv run python -m src.data.loader --skip-download --seed 123
+uv run python -m src.data.loader --skip-download
 ```
+
+Control how many positions are sampled from each bag:
+
+```bash
+uv run python -m src.data.loader --skip-download \
+    --num-train-samples 1000000 \
+    --num-test-samples 50000
+```
+
+## Preprocessing pipeline
+
+1. **Test bag** is processed first. Records are decoded, then
+   deduplicated on the first 5 FEN fields (board placement,
+   active colour, castling rights, en passant square, and
+   halfmove clock — the clock matters because proximity to
+   the 50-move draw rule affects evaluation pressure).
+   Duplicate positions have their win probabilities averaged.
+   Results are written to `test.csv`.
+2. **Train bag** is sampled and deduplicated the same way.
+   Any positions whose dedup key also appears in the test set
+   are removed to guarantee disjoint splits.
+3. The remaining train positions are shuffled and split: 90%
+   goes to `train.csv`, 10% to `val.csv`.
 
 ## Directory layout
 
@@ -44,11 +65,10 @@ data/
 ├── raw/                        # Downloaded .bag files (gitignored)
 │   ├── train_state_value.bag
 │   └── test_state_value.bag
-├── splits/                     # Sampled CSVs (gitignored)
-│   ├── train.csv
-│   ├── val.csv
-│   └── test.csv
-└── README.md
+└── splits/                     # Sampled CSVs (gitignored)
+    ├── train.csv
+    ├── val.csv
+    └── test.csv
 ```
 
 Each CSV has two columns: `fen` (board position) and `win_prob`
