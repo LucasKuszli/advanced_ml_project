@@ -28,14 +28,15 @@ class ChessBenchUrls:
 
 @dataclass(frozen=True)
 class SplitConfig:
-    """Train/val/test split fractions (must sum to 1)."""
+    """Validation fraction carved from the train bag.
 
-    # Fraction of sampled data used for training.
-    train: float = 0.8
-    # Fraction of sampled data used for validation.
-    val: float = 0.1
-    # Fraction of sampled data used for testing.
-    test: float = 0.1
+    The paper already provides separate train/test bags, so
+    we only need a val fraction from the train bag. The test
+    bag is used as-is (subsampled).
+    """
+
+    # Fraction of train-bag samples reserved for validation.
+    val_frac: float = 0.1
 
 
 @dataclass(frozen=True)
