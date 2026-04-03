@@ -12,8 +12,9 @@ import csv
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from src.config.data import LOADER_CFG
 from src.config.paths import DATA_DIR
@@ -35,18 +36,21 @@ class ChessDataset(Dataset):
             Function mapping a FEN string to a tensor.
             If ``None``, raw FEN strings are returned
             instead.
+        split_dir (Path | None): Directory containing the
+            split CSVs.  Defaults to ``SPLIT_DIR``.
     """
 
     def __init__(
         self,
         split: str,
         encoder: Callable[[str], torch.Tensor] | None = None,
+        split_dir: Path | None = None,
     ) -> None:
-        path = SPLIT_DIR / f"{split}.csv"
+        root = split_dir if split_dir is not None else SPLIT_DIR
+        path = root / f"{split}.csv"
         if not path.exists():
             raise FileNotFoundError(
-                f"Split CSV not found: {path}. "
-                f"Run `python -m src.data.loader` first."
+                f"Split CSV not found: {path}. Run `python -m src.data.loader` first."
             )
 
         self._fens: list[str] = []
@@ -66,11 +70,13 @@ class ChessDataset(Dataset):
         return len(self._fens)
 
     def __getitem__(
-        self, idx: int,
+        self,
+        idx: int,
     ) -> tuple[torch.Tensor | str, torch.Tensor]:
         fen = self._fens[idx]
         label = torch.tensor(
-            self._labels[idx], dtype=torch.float32,
+            self._labels[idx],
+            dtype=torch.float32,
         )
         if self._encoder is not None:
             return self._encoder(fen), label
@@ -83,6 +89,7 @@ def build_loader(
     batch_size: int = LOADER_CFG.batch_size,
     num_workers: int = LOADER_CFG.num_workers,
     pin_memory: bool = LOADER_CFG.pin_memory,
+    split_dir: Path | None = None,
 ) -> DataLoader:
     """Build a DataLoader for the given split.
 
@@ -94,11 +101,17 @@ def build_loader(
         batch_size (int): Batch size, (default=256).
         num_workers (int): Loader workers, (default=4).
         pin_memory (bool): Pin host memory, (default=True).
+        split_dir (Path | None): Custom split directory,
+            (default=None → ``SPLIT_DIR``).
 
     Returns:
         DataLoader.
     """
-    dataset = ChessDataset(split, encoder=encoder)
+    dataset = ChessDataset(
+        split,
+        encoder=encoder,
+        split_dir=split_dir,
+    )
     shuffle = split == "train"
     return DataLoader(
         dataset,
@@ -110,7 +123,104 @@ def build_loader(
     )
 
 
-if __name__ == "__main__":
+class BlockShuffleSampler(Sampler[int]):
+    """Shuffle at block granularity to keep mmap reads sequential.
+
+    Divides the dataset into contiguous blocks of *block_size*
+    indices, shuffles the order of blocks each epoch, then
+    yields every index within each block in order.  This
+    preserves locality for memory-mapped files while still
+    providing epoch-level randomisation.
+    """
+
+    def __init__(self, n: int, block_size: int = 32_768) -> None:
+        self._n = n
+        self._block_size = block_size
+
+    def __len__(self) -> int:
+        return self._n
+
+    def __iter__(self):
+        blocks = list(range(0, self._n, self._block_size))
+        np.random.shuffle(blocks)
+        for start in blocks:
+            end = min(start + self._block_size, self._n)
+            yield from range(start, end)
+
+
+class PrecomputedDataset(Dataset):
+    """Dataset backed by memory-mapped ``.npy`` files.
+
+    Reads ``<split>_X.npy`` and ``<split>_y.npy`` produced by
+    ``src.data.precompute``.  The numpy arrays are opened in
+    ``mmap_mode='r'`` so DataLoader workers share a single
+    read-only mapping with negligible per-worker RAM.
+
+    Args:
+        split (str): ``"train"`` or ``"val"``.
+        precomputed_dir (Path): Directory containing the
+            ``<split>_X.npy`` and ``<split>_y.npy`` files.
+    """
+
+    def __init__(
+        self,
+        split: str,
+        precomputed_dir: Path,
+    ) -> None:
+        x_path = precomputed_dir / f"{split}_X.npy"
+        y_path = precomputed_dir / f"{split}_y.npy"
+        if not x_path.exists() or not y_path.exists():
+            raise FileNotFoundError(
+                f"Precomputed data not found in {precomputed_dir}. "
+                "Run `python -m src.data.precompute` first."
+            )
+        self._X = np.load(x_path, mmap_mode="r")
+        self._y = np.load(y_path, mmap_mode="r")
+
+    def __len__(self) -> int:
+        return len(self._y)
+
+    def __getitem__(
+        self,
+        idx: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        x = torch.from_numpy(self._X[idx].copy())
+        y = torch.tensor(self._y[idx], dtype=torch.float32)
+        return x, y
+
+
+def build_precomputed_loader(
+    split: str,
+    precomputed_dir: Path,
+    batch_size: int = LOADER_CFG.batch_size,
+    num_workers: int = LOADER_CFG.num_workers,
+    pin_memory: bool = LOADER_CFG.pin_memory,
+) -> DataLoader:
+    """Build a DataLoader from precomputed ``.npy`` files.
+
+    Args:
+        split: ``"train"`` or ``"val"``.
+        precomputed_dir: Directory with the .npy files.
+        batch_size: Batch size.
+        num_workers: Loader workers.
+        pin_memory: Pin host memory.
+
+    Returns:
+        DataLoader.
+    """
+    dataset = PrecomputedDataset(split, precomputed_dir)
+    sampler = BlockShuffleSampler(len(dataset)) if split == "train" else None
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        sampler=sampler,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        drop_last=(split == "train"),
+        persistent_workers=num_workers > 0,
+        prefetch_factor=4 if num_workers > 0 else None,
+    )
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -134,7 +244,9 @@ if __name__ == "__main__":
     print(f"  win_prob: {label.item():.4f}")
 
     loader = build_loader(
-        args.split, batch_size=8, num_workers=0,
+        args.split,
+        batch_size=8,
+        num_workers=0,
     )
     batch_fens, batch_labels = next(iter(loader))
     print(f"\nBatch (size={len(batch_labels)}):")
