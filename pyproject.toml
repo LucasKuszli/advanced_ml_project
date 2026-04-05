@@ -5,13 +5,19 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "chess>=1.11.2",
     "chessboard-image>=1.1.5",
     "matplotlib>=3.10.8",
     "numpy>=2.4.4",
+    "pygame>=2.6.1",
+    "pytest>=9.0.2",
     "ruff>=0.15.9",
+    "scipy>=1.17.1",
     "setuptools>=81.0.0",
+    "stockfish>=4.0.8",
     "torch>=2.11.0",
     "torchvision>=0.26.0",
+    "tqdm>=4.67.3",
 ]
 
 [tool.ruff]

@@ -2,9 +2,9 @@
 docs/*
 img/*
 data/raw/
+data/
 data/processed/
-data/splits
-artifacts/
+
 .vscode/
 # Byte-compiled / optimized / DLL files
 __pycache__/
