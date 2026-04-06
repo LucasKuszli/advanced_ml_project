@@ -1,14 +1,16 @@
 """Visualize test-set evaluation results.
 
-Reads ``test_results.json`` and produces bar charts and a
+Reads ``results.json`` and produces bar charts and a
 scatter plot of predictions vs. ground-truth labels.
 
 Usage:
     uv run python -m src.evaluate.visualize
+    uv run python -m src.evaluate.visualize --encoder dynamic_piece_plane
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -19,7 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from src.config.paths import IMG_DIR, MODEL_DIR
+from src.config.paths import EVAL_DIR, MODEL_DIR
 from src.config.train import RUN_SEEDS, TrainConfig
 from src.data.dataset import build_loader
 from src.encoders import (
@@ -30,9 +32,7 @@ from src.encoders import (
 from src.evaluate.evaluate import _load_model, _predict
 
 MODEL_TAG = "d128_L5"
-ENCODER = "piece_plane"
 TEST_SPLIT_DIR = Path("data/test_split")
-OUT_DIR = IMG_DIR / "evaluation" / ENCODER
 
 DPI = 150
 FIGSIZE_BAR = (7.0, 4.5)
@@ -42,9 +42,9 @@ BAR_COLOR = "steelblue"
 MEAN_COLOR = "tab:red"
 
 
-def _load_results() -> dict:
-    """Load test_results.json."""
-    path = MODEL_DIR / MODEL_TAG / "test_results.json"
+def _load_results(encoder_name: str) -> dict:
+    """Load results.json for an encoder."""
+    path = EVAL_DIR / MODEL_TAG / encoder_name / "results.json"
     with open(path) as f:
         return json.load(f)
 
@@ -142,14 +142,36 @@ def _scatter_pred_vs_target(
 
 def main() -> None:
     """Generate all evaluation plots."""
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    results = _load_results()
+    parser = argparse.ArgumentParser(
+        description="Generate evaluation plots.",
+    )
+    parser.add_argument(
+        "--encoder",
+        type=str,
+        default="piece_plane",
+        help="Encoder name (default=piece_plane).",
+    )
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=2,
+        help="DataLoader workers (default=2).",
+    )
+    args = parser.parse_args()
+
+    encoder_name: str = args.encoder
+    out_dir = EVAL_DIR / MODEL_TAG / encoder_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    results = _load_results(encoder_name)
 
     seeds = [s for s in RUN_SEEDS.seeds if str(s) in results]
     seed_results = [results[str(s)] for s in seeds]
 
     mean = results["mean"]
     std = results["std"]
+
+    label = encoder_name.replace("_", " ")
 
     # MSE bar chart.
     _bar_chart(
@@ -158,8 +180,8 @@ def main() -> None:
         mean["mse"],
         std["mse"],
         ylabel="MSE",
-        title="Test MSE by Seed — piece_plane",
-        out_path=OUT_DIR / "mse_by_seed.png",
+        title=f"Test MSE by Seed — {label}",
+        out_path=out_dir / "mse_by_seed.png",
     )
 
     # MAE bar chart.
@@ -169,8 +191,8 @@ def main() -> None:
         mean["mae"],
         std["mae"],
         ylabel="MAE",
-        title="Test MAE by Seed — piece_plane",
-        out_path=OUT_DIR / "mae_by_seed.png",
+        title=f"Test MAE by Seed — {label}",
+        out_path=out_dir / "mae_by_seed.png",
     )
 
     # Correlation bar chart.
@@ -218,11 +240,11 @@ def main() -> None:
     ax.set_xticklabels([str(s) for s in seeds])
     ax.set_xlabel("Seed")
     ax.set_ylabel("Correlation")
-    ax.set_title("Test Correlation by Seed — piece_plane")
+    ax.set_title(f"Test Correlation by Seed — {label}")
     ax.legend()
     ax.grid(axis="y", alpha=GRID_ALPHA)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "correlation_by_seed.png", dpi=DPI)
+    fig.savefig(out_dir / "correlation_by_seed.png", dpi=DPI)
     plt.close(fig)
 
     # Sign accuracy bar chart.
@@ -232,8 +254,8 @@ def main() -> None:
         mean["sign_acc"],
         std["sign_acc"],
         ylabel="Accuracy",
-        title="Test Sign Accuracy by Seed — piece_plane",
-        out_path=OUT_DIR / "sign_acc_by_seed.png",
+        title=f"Test Sign Accuracy by Seed — {label}",
+        out_path=out_dir / "sign_acc_by_seed.png",
         fmt=".4f",
     )
 
@@ -242,14 +264,15 @@ def main() -> None:
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu",
     )
-    cfg = TrainConfig(encoder_name=ENCODER, seed=best_seed)
-    run_dir = MODEL_DIR / MODEL_TAG / f"{ENCODER}_seed{best_seed}"
+    cfg = TrainConfig(encoder_name=encoder_name, seed=best_seed)
+    cfg.num_workers = args.num_workers
+    run_dir = MODEL_DIR / MODEL_TAG / f"{encoder_name}_seed{best_seed}"
     encoder_map = {
         "piece_plane": PiecePlaneEncoder,
         "dynamic_piece_plane": DynamicPiecePlaneEncoder,
         "full_piece_plane": FullPiecePlaneEncoder,
     }
-    encoder = encoder_map[ENCODER]()
+    encoder = encoder_map[encoder_name]()
     loader = build_loader(
         "test",
         encoder=encoder,
@@ -263,11 +286,11 @@ def main() -> None:
         preds,
         targets,
         best_seed,
-        OUT_DIR / "pred_vs_target.png",
+        out_dir / "pred_vs_target.png",
     )
 
-    print(f"[eval] plots saved to {OUT_DIR}/")
-    for p in sorted(OUT_DIR.glob("*.png")):
+    print(f"[viz] plots saved to {out_dir}/")
+    for p in sorted(out_dir.glob("*.png")):
         print(f"  {p.name}")
 
 

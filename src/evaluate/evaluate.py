@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from src.config.paths import MODEL_DIR
+from src.config.paths import EVAL_DIR, MODEL_DIR
 from src.config.train import RUN_SEEDS, TrainConfig
 from src.data.dataset import build_loader
 from src.encoders import (
@@ -215,7 +215,9 @@ def main() -> None:
         )
 
     # Save results JSON.
-    out_path = MODEL_DIR / MODEL_TAG / "test_results.json"
+    out_dir = EVAL_DIR / MODEL_TAG / args.encoder
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "results.json"
     serializable = {str(k): v for k, v in results.items()}
     if len(args.seed) > 1:
         serializable["mean"] = {k: float(np.mean(v)) for k, v in all_metrics.items()}
