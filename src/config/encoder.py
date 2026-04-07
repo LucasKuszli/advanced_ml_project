@@ -37,65 +37,57 @@ class PiecePlaneLayout:
 
 
 @dataclass(frozen=True)
-class SquareTokenLayout:
-    """Token layout constants for the square-token encoder.
+class DynamicPiecePlaneLayout:
+    """Channel layout for the dynamic piece-plane encoder.
 
-    Token map (72 tokens):
-        0      [CLS] aggregation token.
-        1-64   One token per square (a8 … h1).
-        65     Side to move (0 = black, 1 = white).
-        66-69  Castling rights (K Q k q).
-        70     En-passant file (0-7) or 8 = none.
-        71     Halfmove clock (0-100, clamped).
+    Extends PiecePlaneLayout with 12 dynamic move-aware planes.
 
-    Vocabulary (128 IDs):
-        0-12   Empty + 12 piece types.
-        13-14  Side to move.
-        15-16  Castling flag.
-        17-25  En-passant file (8 files + none).
-        26-126 Halfmove clock (0-100).
-        127    [CLS] token.
+    Channel map (31 total):
+        0-18   Base piece-plane channels (see PiecePlaneLayout).
+        19     White attack map (binary).
+        20     Black attack map (binary).
+        21     White defense map (binary).
+        22     Black defense map (binary).
+        23     White attack count per square.
+        24     Black attack count per square.
+        25     White reachability map (binary).
+        26     Black reachability map (binary).
+        27     White pinned pieces (binary).
+        28     Black pinned pieces (binary).
+        29     White king in check (uniform binary).
+        30     Black king in check (uniform binary).
     """
 
-    # Ordered piece symbols for token IDs 1-12.
-    piece_order: str = "PNBRQKpnbrqk"
+    n_base: int = 19
+    n_dynamic: int = 12
+    num_channels: int = 31
+    board_size: int = 8
 
-    # Token ID for empty squares.
-    empty_token: int = 0
 
-    # Number of board squares.
-    n_squares: int = 64
+@dataclass(frozen=True)
+class FullPiecePlaneLayout:
+    """Channel layout for the full piece-plane encoder.
 
-    # Number of metadata tokens.
-    n_meta: int = 7
+    Extends DynamicPiecePlaneLayout with 6 structural pawn planes.
 
-    # Total sequence length: 1 (CLS) + n_squares + n_meta.
-    seq_len: int = 72
+    Channel map (37 total):
+        0-30   Dynamic piece-plane channels (see DynamicPiecePlaneLayout).
+        31     White doubled pawns.
+        32     Black doubled pawns.
+        33     White isolated pawns.
+        34     Black isolated pawns.
+        35     White passed pawns.
+        36     Black passed pawns.
+    """
 
-    # --- Vocabulary offsets ---
-
-    # Side-to-move offset (13 = black, 14 = white).
-    side_offset: int = 13
-
-    # Castling offset (15 = no, 16 = yes).
-    castle_offset: int = 15
-
-    # En-passant file offset (17-24 = a-h, 25 = none).
-    ep_offset: int = 17
-
-    # Halfmove clock offset (26-126 = 0-100).
-    halfmove_offset: int = 26
-
-    # Dedicated [CLS] token ID.
-    cls_id: int = 127
-
-    # Total vocabulary size.
-    vocab_size: int = 128
-
-    # Max halfmove clock before clamping.
-    max_halfmove: int = 100
+    n_base: int = 19
+    n_dynamic: int = 12
+    n_structural: int = 6
+    num_channels: int = 37
+    board_size: int = 8
 
 
 # Module-level singletons.
 PIECE_PLANE = PiecePlaneLayout()
-SQUARE_TOKEN = SquareTokenLayout()
+DYNAMIC_PIECE_PLANE = DynamicPiecePlaneLayout()
+FULL_PIECE_PLANE = FullPiecePlaneLayout()

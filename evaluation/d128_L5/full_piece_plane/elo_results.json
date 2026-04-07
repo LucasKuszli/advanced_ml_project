@@ -1,0 +1,170 @@
+[
+  {
+    "encoder": "full_piece_plane",
+    "train_seed": 42,
+    "estimated_elo": 1285,
+    "matches": [
+      {
+        "sf_elo": 1320,
+        "wins": 5,
+        "draws": 2,
+        "losses": 13,
+        "score": 0.3
+      },
+      {
+        "sf_elo": 1500,
+        "wins": 2,
+        "draws": 0,
+        "losses": 18,
+        "score": 0.1
+      },
+      {
+        "sf_elo": 1700,
+        "wins": 3,
+        "draws": 1,
+        "losses": 16,
+        "score": 0.175
+      },
+      {
+        "sf_elo": 1900,
+        "wins": 1,
+        "draws": 1,
+        "losses": 18,
+        "score": 0.075
+      },
+      {
+        "sf_elo": 2100,
+        "wins": 3,
+        "draws": 0,
+        "losses": 17,
+        "score": 0.15
+      },
+      {
+        "sf_elo": 2300,
+        "wins": 0,
+        "draws": 0,
+        "losses": 20,
+        "score": 0.0
+      },
+      {
+        "sf_elo": 2500,
+        "wins": 0,
+        "draws": 0,
+        "losses": 20,
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "encoder": "full_piece_plane",
+    "train_seed": 67,
+    "estimated_elo": 1224,
+    "matches": [
+      {
+        "sf_elo": 1320,
+        "wins": 6,
+        "draws": 1,
+        "losses": 13,
+        "score": 0.325
+      },
+      {
+        "sf_elo": 1500,
+        "wins": 4,
+        "draws": 0,
+        "losses": 16,
+        "score": 0.2
+      },
+      {
+        "sf_elo": 1700,
+        "wins": 1,
+        "draws": 1,
+        "losses": 18,
+        "score": 0.075
+      },
+      {
+        "sf_elo": 1900,
+        "wins": 0,
+        "draws": 1,
+        "losses": 19,
+        "score": 0.025
+      },
+      {
+        "sf_elo": 2100,
+        "wins": 0,
+        "draws": 0,
+        "losses": 20,
+        "score": 0.0
+      },
+      {
+        "sf_elo": 2300,
+        "wins": 0,
+        "draws": 0,
+        "losses": 20,
+        "score": 0.0
+      },
+      {
+        "sf_elo": 2500,
+        "wins": 0,
+        "draws": 0,
+        "losses": 20,
+        "score": 0.0
+      }
+    ]
+  },
+  {
+    "encoder": "full_piece_plane",
+    "train_seed": 1337,
+    "estimated_elo": 1205,
+    "matches": [
+      {
+        "sf_elo": 1320,
+        "wins": 3,
+        "draws": 3,
+        "losses": 14,
+        "score": 0.225
+      },
+      {
+        "sf_elo": 1500,
+        "wins": 2,
+        "draws": 0,
+        "losses": 18,
+        "score": 0.1
+      },
+      {
+        "sf_elo": 1700,
+        "wins": 0,
+        "draws": 2,
+        "losses": 18,
+        "score": 0.05
+      },
+      {
+        "sf_elo": 1900,
+        "wins": 1,
+        "draws": 0,
+        "losses": 19,
+        "score": 0.05
+      },
+      {
+        "sf_elo": 2100,
+        "wins": 1,
+        "draws": 0,
+        "losses": 19,
+        "score": 0.05
+      },
+      {
+        "sf_elo": 2300,
+        "wins": 2,
+        "draws": 0,
+        "losses": 18,
+        "score": 0.1
+      },
+      {
+        "sf_elo": 2500,
+        "wins": 0,
+        "draws": 0,
+        "losses": 20,
+        "score": 0.0
+      }
+    ]
+  }
+]

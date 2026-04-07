@@ -33,6 +33,7 @@ from src.config.paths import DATA_DIR
 
 RAW_DIR = DATA_DIR / "raw"
 SPLIT_DIR = DATA_DIR / "splits"
+TEST_SPLIT_DIR = DATA_DIR / "test_split"
 
 
 class BagReader:
@@ -47,7 +48,9 @@ class BagReader:
         fd = os.open(bag_path, os.O_RDONLY)
         try:
             self._data = mmap.mmap(
-                fd, 0, access=mmap.ACCESS_READ,
+                fd,
+                0,
+                access=mmap.ACCESS_READ,
             )
             file_size = self._data.size()
         finally:
@@ -60,7 +63,8 @@ class BagReader:
         # Trailing bytes store the offset where the
         # record index starts.
         (index_start,) = struct.unpack(
-            "<Q", self._data[-entry:],
+            "<Q",
+            self._data[-entry:],
         )
         index_size = file_size - index_start
         self._num_records = index_size // entry
@@ -81,21 +85,18 @@ class BagReader:
         if idx < 0:
             idx += self._num_records
         if not 0 <= idx < self._num_records:
-            raise IndexError(
-                f"Index {idx} out of range [0, "
-                f"{self._num_records})"
-            )
+            raise IndexError(f"Index {idx} out of range [0, {self._num_records})")
         entry = BAG_FMT.index_entry_bytes
         offset = idx * entry + self._index_start
         if idx:
             start, end = struct.unpack(
                 "<2q",
-                self._data[offset - entry:offset + entry],
+                self._data[offset - entry : offset + entry],
             )
         else:
             (end,) = struct.unpack(
                 "<q",
-                self._data[offset:offset + entry],
+                self._data[offset : offset + entry],
             )
             start = 0
         return bytes(self._data[start:end])
@@ -143,7 +144,8 @@ def decode_state_value(
     # Win prob: raw big-endian double (no length prefix —
     # last element in Apache Beam TupleCoder).
     (win_prob,) = struct.unpack(
-        ">d", buf.read(BAG_FMT.win_prob_bytes),
+        ">d",
+        buf.read(BAG_FMT.win_prob_bytes),
     )
     return fen, win_prob
 
@@ -182,9 +184,7 @@ def download_file(url: str, dest: Path) -> None:
                 mb_done = downloaded / 1e6
                 mb_total = total / 1e6
                 print(
-                    f"\r  {mb_done:.0f}/"
-                    f"{mb_total:.0f} MB"
-                    f" ({pct:.1f}%)",
+                    f"\r  {mb_done:.0f}/{mb_total:.0f} MB ({pct:.1f}%)",
                     end="",
                     flush=True,
                 )
@@ -224,6 +224,27 @@ def _dedup_key(fen: str) -> str:
     return " ".join(fen.split()[:5])
 
 
+def collect_split_keys(split_dir: Path) -> set[str]:
+    """Collect all FEN dedup keys from a split directory.
+
+    Reads every CSV in *split_dir* and returns the set of
+    dedup keys (first 5 FEN fields).
+
+    Args:
+        split_dir (Path): Directory containing split CSVs.
+
+    Returns:
+        set[str]: Dedup keys found across all CSVs.
+    """
+    keys: set[str] = set()
+    for csv_path in sorted(split_dir.glob("*.csv")):
+        with open(csv_path, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                keys.add(_dedup_key(row["fen"]))
+    return keys
+
+
 def _sample_bag(
     bag_path: Path,
     num_samples: int,
@@ -247,13 +268,14 @@ def _sample_bag(
     total = len(reader)
     num_samples = min(num_samples, total)
     print(
-        f"  {bag_path.name}: {total:,} records, "
-        f"sampling {num_samples:,} (seed={seed})"
+        f"  {bag_path.name}: {total:,} records, sampling {num_samples:,} (seed={seed})"
     )
 
     rng = np.random.default_rng(seed)
     indices = rng.choice(
-        total, size=num_samples, replace=False,
+        total,
+        size=num_samples,
+        replace=False,
     )
     indices.sort()
 
@@ -288,15 +310,11 @@ def _sample_bag(
     print()
     reader.close()
 
-    rows = [
-        (fen_for_key[k], sums[k] / counts[k])
-        for k in sums
-    ]
+    rows = [(fen_for_key[k], sums[k] / counts[k]) for k in sums]
     n_dupes = num_samples - len(rows)
     if n_dupes:
         print(
-            f"    Deduplicated: {num_samples:,} → "
-            f"{len(rows):,} ({n_dupes:,} duplicates)"
+            f"    Deduplicated: {num_samples:,} → {len(rows):,} ({n_dupes:,} duplicates)"
         )
     return rows
 
@@ -318,59 +336,86 @@ def _write_csv(
             w.writerow([fen, wp])
 
 
+def prepare_test_split(
+    num_samples: int = SAMPLING.num_samples,
+    seed: int = SAMPLING.seed,
+    exclude_keys: set[str] | None = None,
+) -> Path:
+    """Sample the test bag into a shared test.csv.
+
+    The test set is sampled once and reused across all
+    seeds.  Call this before any ``prepare_splits`` calls.
+
+    Args:
+        num_samples (int): Positions to sample from
+            the test bag, (default=10_000_000).
+        seed (int): Random seed, (default=42).
+        exclude_keys (set[str] | None): FEN dedup keys
+            to exclude, (default=None).
+
+    Returns:
+        Path: Directory containing the written test.csv.
+    """
+    dest = TEST_SPLIT_DIR
+    test_csv = dest / "test.csv"
+    if test_csv.exists():
+        print(f"Test split already exists: {test_csv}")
+        return dest
+
+    dest.mkdir(parents=True, exist_ok=True)
+    _excl = exclude_keys or set()
+
+    test_bag = RAW_DIR / "test_state_value.bag"
+    print("Processing test bag:")
+    test_rows = _sample_bag(test_bag, num_samples, seed)
+
+    if _excl:
+        before = len(test_rows)
+        test_rows = [r for r in test_rows if _dedup_key(r[0]) not in _excl]
+        n_excl = before - len(test_rows)
+        if n_excl:
+            print(f"  Excluded {n_excl:,} positions (external keys)")
+
+    _write_csv(test_csv, test_rows)
+    print(f"  test: {len(test_rows):,} records -> {test_csv}")
+    return dest
+
+
 def prepare_splits(
     num_train_samples: int = SAMPLING.num_samples,
-    num_test_samples: int = SAMPLING.num_samples,
     seed: int = SAMPLING.seed,
+    out_dir: Path | None = None,
+    exclude_keys: set[str] | None = None,
 ) -> None:
-    """Sample both bags and write train/val/test CSVs.
+    """Sample the train bag and write train/val CSVs.
 
-    Uses the paper's pre-split train and test .bag files.
-    The test bag is processed first so that any positions
-    appearing in both bags can be removed from train/val,
-    guaranteeing disjoint splits. A validation set is carved
-    from the train bag according to ``SPLIT_CFG.val_frac``.
+    The caller should include test-set keys (from
+    ``collect_split_keys(TEST_SPLIT_DIR)``) in
+    *exclude_keys* to guarantee no train/test overlap.
 
     Args:
         num_train_samples (int): Positions to sample from
             the train bag, (default=10_000_000).
-        num_test_samples (int): Positions to sample from
-            the test bag, (default=10_000_000).
         seed (int): Random seed, (default=42).
+        out_dir (Path | None): Directory for output CSVs,
+            (default=None → ``SPLIT_DIR``).
+        exclude_keys (set[str] | None): FEN dedup keys
+            to exclude from train/val, (default=None).
     """
-    SPLIT_DIR.mkdir(parents=True, exist_ok=True)
+    dest = out_dir if out_dir is not None else SPLIT_DIR
+    dest.mkdir(parents=True, exist_ok=True)
+    _excl = exclude_keys or set()
 
-    # --- Test bag first (so we can remove overlaps) ---
-    test_bag = RAW_DIR / "test_state_value.bag"
-    print("Processing test bag:")
-    test_rows = _sample_bag(
-        test_bag, num_test_samples, seed,
-    )
-    test_keys = {_dedup_key(fen) for fen, _ in test_rows}
-
-    test_csv = SPLIT_DIR / "test.csv"
-    _write_csv(test_csv, test_rows)
-    print(
-        f"  test:  {len(test_rows):,} records "
-        f"-> {test_csv}"
-    )
-
-    # --- Train bag → train + val CSVs ---
     train_bag = RAW_DIR / "train_state_value.bag"
     print("Processing train bag:")
     rows = _sample_bag(train_bag, num_train_samples, seed)
 
-    # Remove positions that also appear in the test set.
-    before = len(rows)
-    rows = [
-        r for r in rows if _dedup_key(r[0]) not in test_keys
-    ]
-    n_leaked = before - len(rows)
-    if n_leaked:
-        print(
-            f"  Removed {n_leaked:,} positions "
-            f"overlapping with test set"
-        )
+    if _excl:
+        before = len(rows)
+        rows = [r for r in rows if _dedup_key(r[0]) not in _excl]
+        n_removed = before - len(rows)
+        if n_removed:
+            print(f"  Removed {n_removed:,} excluded positions")
 
     rng = np.random.default_rng(seed)
     rng.shuffle(rows)
@@ -379,45 +424,33 @@ def prepare_splits(
     val_rows = rows[:n_val]
     train_rows = rows[n_val:]
 
-    train_csv = SPLIT_DIR / "train.csv"
+    train_csv = dest / "train.csv"
     _write_csv(train_csv, train_rows)
-    print(
-        f"  train: {len(train_rows):,} records "
-        f"-> {train_csv}"
-    )
+    print(f"  train: {len(train_rows):,} records -> {train_csv}")
 
-    val_csv = SPLIT_DIR / "val.csv"
+    val_csv = dest / "val.csv"
     _write_csv(val_csv, val_rows)
-    print(
-        f"  val:   {len(val_rows):,} records "
-        f"-> {val_csv}"
-    )
+    print(f"  val:   {len(val_rows):,} records -> {val_csv}")
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description=(
-            "Download and prepare ChessBench data."
-        ),
+        description=("Download and prepare ChessBench data."),
     )
     parser.add_argument(
         "--num-train-samples",
         type=int,
         default=SAMPLING.num_samples,
-        help=(
-            "Positions to sample from the train bag "
-            "(default: 10M)."
-        ),
+        help=("Positions to sample from the train bag (default: 10M)."),
     )
     parser.add_argument(
         "--num-test-samples",
         type=int,
         default=SAMPLING.num_samples,
         help=(
-            "Positions to sample from the test bag "
-            "(default: 10M, clamped to bag size)."
+            "Positions to sample from the test bag (default: 10M, clamped to bag size)."
         ),
     )
     parser.add_argument(
@@ -436,8 +469,13 @@ if __name__ == "__main__":
     if not args.skip_download:
         download_chessbench()
 
+    test_dir = prepare_test_split(
+        num_samples=args.num_test_samples,
+        seed=args.seed,
+    )
+    test_keys = collect_split_keys(test_dir)
     prepare_splits(
         num_train_samples=args.num_train_samples,
-        num_test_samples=args.num_test_samples,
         seed=args.seed,
+        exclude_keys=test_keys,
     )
